@@ -1,0 +1,194 @@
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="initial-scale=1,
+      maximum-scale=1,user-scalable=no" />
+    <title>LiveStream Guard</title>
+
+
+    <style>
+      html,
+      body,
+      #viewDiv {
+        height: 100%;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        background-color: black;
+      }
+      h1, p{
+        color: #fbfbfb;
+        text-align: center;
+      }
+
+      #streamLayerDiv {
+        padding: 10px;
+        background-color: #f5f5f5;
+      }
+    </style>
+    <link rel="stylesheet" href="https://js.arcgis.com/4.28/esri/themes/light/main.css" />
+    <script src="https://js.arcgis.com/4.28/"></script>
+    <script>
+      require([
+        "esri/Map",
+        "esri/views/MapView",
+        "esri/layers/StreamLayer",
+        "esri/geometry/Polygon",
+        "esri/Graphic",
+        "esri/widgets/LayerList",
+        "esri/core/reactiveUtils",
+        "esri/layers/FeatureLayer"
+      ], (Map, MapView, StreamLayer, Polygon, Graphic, LayerList, reactiveUtils, FeatureLayer) => {
+        let streamLayer, streamLayerView;
+
+        /***************************************
+         * Set up map view with initial extent
+         ***************************************/
+        const map = new Map({
+          basemap: "hybrid"
+        });
+        const featureLayer = new FeatureLayer({
+            url:
+         "https://services.arcgis.com/A3OkSpOxWXjYxK4y/arcgis/rest/services/Une_Cundinamarca/FeatureServer/0"
+            });
+        map.add(featureLayer);
+   
+        const view = new MapView({
+          container: "viewDiv",
+          map: map,
+          center: [-73.98118, 4.30679],
+          zoom: 11
+        });
+        view.ui.add(new LayerList({view}), "bottom-left");
+        view.ui.add("streamLayerDiv", "top-right");
+ 
+        // Connect click events to UI buttons
+        const toggleLayerButton = document.getElementById(
+          "toggleStreamLayerButton"
+        );
+
+        /*************************************************
+         * Functions to add and remove Stream Layer
+         *************************************************/
+        toggleLayerButton.addEventListener("click", () => {
+          if (streamLayer) {
+            map.remove(streamLayer);
+            streamLayer.destroy();
+            streamLayer = null;
+            view.graphics.removeAll();
+            processDisconnect();
+          } else {
+            addStreamLayer();
+          }
+        });
+
+        /*****************************************************************
+         * Functions to apply or remove FeatureEffect from StreamLayerView
+         *****************************************************************/
+        const geometryFilterButton = document.getElementById("toggleGeometryDefinitionButton");
+        geometryFilterButton.addEventListener("click", () => {
+          // set the effect to null if user clicks clear button
+          if (streamLayerView.featureEffect) {
+            streamLayerView.featureEffect = null;
+            view.graphics.removeAll();
+            geometryFilterButton.innerHTML = "Apply spatial filter";
+          } else {
+            // apply an effect to the layer view if user clicks apply button
+            geometryFilterButton.innerHTML = "Clear spatial filter";
+            streamLayerView.featureEffect = {
+              filter: {
+                geometry: view.extent.clone().expand(0.8)
+              },
+              excludedEffect: "grayscale(100%) opacity(30%)"
+            };
+            view.graphics.removeAll();
+            view.graphics.add(
+              new Graphic({
+                geometry: view.extent.clone().expand(0.8),
+                symbol: {
+                  type: "simple-fill",
+                  style: "none",
+                  outline: {
+                    color: [5, 112, 176],
+                    width: 2
+                  }
+                }
+              })
+            );
+          }
+        });
+
+        function addStreamLayer() {
+          // URL to stream service
+          const svcUrl = document.getElementById("streamUrlText").value;
+
+          // Construct Stream Layer
+          streamLayer = new StreamLayer({
+            url: svcUrl,
+            purgeOptions: {
+              displayCount: 10000
+            }
+          });
+
+          map.add(streamLayer);
+
+          // When graphics controller created, register listeners for events
+          view.whenLayerView(streamLayer).then((layerView) => {
+            streamLayerView = layerView;
+            processConnect();
+
+            reactiveUtils.watch(() => layerView.connectionStatus, (value) => {
+              if (value === "connected") {
+                processConnect();
+              } else {
+                processDisconnect();
+              }
+            });
+          });
+        }
+
+        /*********************************************************
+         * Stream layer event handlers
+         *********************************************************/
+        function processConnect() {
+          toggleLayerButton.value = "Detener servicio de streaming";
+          geometryFilterButton.classList.remove("esri-button--disabled");
+        }
+
+        function processDisconnect() {
+          toggleLayerButton.value = "Add stream layer";
+          geometryFilterButton.classList.add("esri-button--disabled");
+          geometryFilterButton.innerHTML = "Apply spatial filter";
+        }
+      });
+    </script>
+  </head>
+
+  <body>
+    <h1>Live Stream Guard</h1>
+    <p>Este trabajo fue desarrollado por Lorena Rodríguez</p>
+    <div id="viewDiv"></div>
+    <div id="streamLayerDiv" class="esri-widget">
+      <div class="esri-editor__controls">
+        <label class="esri-feature-form__label">Url de servicio de capa:
+          <input
+            class="esri-input esri-feature-form__input"
+            type="text"
+            id="streamUrlText"
+            value="https://erodriguez.esrinosa.local/server/rest/services/LiveGuard/StreamServer"
+            /></label>
+        <input
+          type="button"
+          id="toggleStreamLayerButton"
+          value="Suscribirse a servicio de capa de streaming"
+          class="esri-button"
+          />
+      </div>
+
+      <br />
+      <div class="esri-editor__controls">
+      </div>
+    </div>
+  </body>
+
+</html>
